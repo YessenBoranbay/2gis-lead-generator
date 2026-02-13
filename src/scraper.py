@@ -143,8 +143,101 @@ class TwoGISScraper:
             logger.debug(f"Ошибка загрузки телефона с {firm_url}: {e}")
             return None
 
+    # Паттерны для разделения адреса и описания
+    _ADDR_KEYWORDS = r'(?:улица|ул\.|пр\.|бульвар|переулок|площадь|проспект|шоссе|м\.|метро|д\.|дом|корп\.|стр\.|г\.)'
+    _ADDR_RE = re.compile(_ADDR_KEYWORDS, re.I)
+    _DESC_KEYWORDS = r'(?:услуги|работаем|предлагаем|компания|салон|магазин|кафе|ресторан)'
+
+    def _extract_address_and_info(self, card, card_text: str, name: str) -> tuple:
+        """
+        Извлечение адреса и описания из карточки. Гарантирует: адрес не попадает в info.
+        Возвращает (address, info).
+        """
+        address = None
+        info = None
+
+        # 1. Адрес: селекторы
+        for sel in ['[data-testid="address"]', '.address', '[class*="address"]', '[class*="Address"]', 'a[href^="geo:"]']:
+            el = card.select_one(sel)
+            if el:
+                t = el.get_text(strip=True)
+                if 5 < len(t) < 250 and self._ADDR_RE.search(t):
+                    address = t[:250]
+                    break
+
+        # 2. Адрес: элементы с адресоподобным текстом (без описания)
+        if not address:
+            for el in card.find_all(['span', 'div', 'p', 'a']):
+                t = el.get_text(strip=True)
+                if 8 < len(t) < 220 and self._ADDR_RE.search(t) and not re.search(self._DESC_KEYWORDS, t, re.I):
+                    address = t[:250]
+                    break
+
+        # 3. Адрес: regex по card_text (адрес в начале или с городом)
+        if not address:
+            for pat in [
+                rf'({self._ADDR_KEYWORDS}[^.]{{5,150}})',
+                r'([^,]{5,120}(?:улица|ул\.|пр\.|бульвар|переулок|площадь|проспект|шоссе)[^,]{0,80})',
+            ]:
+                m = re.search(pat, card_text, re.I)
+                if m:
+                    address = m.group(1).strip()[:250]
+                    break
+
+        # 4. Info: только описание (без адреса)
+        for sel in ['[data-testid="description"]', '.description', '[class*="description"]', '[class*="snippet"]', '[class*="Snippet"]']:
+            el = card.select_one(sel)
+            if el:
+                txt = el.get_text(strip=True)
+                if 20 < len(txt) < 800 and txt != name and not re.match(r'^\d+[.,]\d+', txt):
+                    if not self._ADDR_RE.search(txt):
+                        info = txt[:500]
+                        break
+                    # Блок содержит адрес (и возможно описание)
+                    if not address and 8 < len(txt) < 250:
+                        address = txt[:250]
+                    split_m = re.search(rf'\.\s*(?:{self._DESC_KEYWORDS})', txt, re.I)
+                    if split_m:
+                        addr_part = txt[:split_m.start()].strip()
+                        desc_part = txt[split_m.start():].lstrip('. ')
+                        if self._ADDR_RE.search(addr_part) and len(addr_part) < 220:
+                            if not address:
+                                address = addr_part[:250]
+                            if len(desc_part) >= 15:
+                                info = desc_part[:500]
+                    break
+
+        # 5. Info: fallback — элементы без адреса
+        if not info:
+            for el in card.find_all(['span', 'div', 'p']):
+                t = el.get_text(strip=True)
+                if 25 < len(t) < 600 and t != name and t != address:
+                    if not re.match(r'^\d+', t) and 'оценок' not in t.lower() and not self._ADDR_RE.search(t):
+                        info = t[:500]
+                        break
+
+        # 6. Финальная очистка: адрес в info — переносим в address и удаляем из info
+        if info and not address:
+            m = re.search(rf'({self._ADDR_KEYWORDS}[^.]{{5,200}})', info, re.I)
+            if m:
+                address = m.group(1).strip()[:250]
+                info = re.sub(re.escape(address), '', info, count=1).strip()
+        if info and address and address in info:
+            info = info.replace(address, '', 1).strip()
+
+        if info:
+            for sep in (', ', '. ', ' — ', ' – ', ': '):
+                while info.startswith(sep):
+                    info = info[len(sep):].strip()
+                while info.endswith(sep):
+                    info = info[:-len(sep)].strip()
+        if not info or len(info) < 15:
+            info = None
+
+        return (address, info)
+
     def _parse_search_page(self, html: str, base_url: str) -> List[Company]:
-        """Парсинг карточек компаний со страницы поиска (без перехода на страницу фирмы)."""
+        """Парсинг карточек компаний со страницы поиска."""
         soup = BeautifulSoup(html, 'lxml')
         companies = []
         seen_ids = set()
@@ -165,9 +258,7 @@ class TwoGISScraper:
             if not name or len(name) < 2:
                 continue
 
-            card = link.find_parent(['article', 'div', 'section', 'li'], recursive=True)
-            if not card:
-                card = link
+            card = link.find_parent(['article', 'div', 'section', 'li'], recursive=True) or link
             for _ in range(10):
                 p = card.find_parent()
                 if not p:
@@ -186,7 +277,7 @@ class TwoGISScraper:
             rating_el = card.find(string=re.compile(r'^\d+\.\d+$'))
             if rating_el:
                 try:
-                    rating = float(rating_el.strip())
+                    rating = float(str(rating_el).strip())
                 except ValueError:
                     pass
             if rating is None:
@@ -198,63 +289,19 @@ class TwoGISScraper:
                         pass
 
             voters_count = None
-            voters_el = card.find(string=re.compile(r'\d+\s*оценок?', re.I))
-            if voters_el:
-                m = re.search(r'(\d+)', voters_el)
-                if m:
-                    voters_count = int(m.group(1))
-            if voters_count is None:
-                m = re.search(r'(\d+)\s*оценок', card_text, re.I)
-                if m:
-                    voters_count = int(m.group(1))
+            m = re.search(r'(\d+)\s*оценок', card_text, re.I)
+            if m:
+                voters_count = int(m.group(1))
 
-            address = None
-            for addr_sel in ['[data-testid="address"]', '.address', '[class*="address"]', '[class*="Address"]', 'a[href^="geo:"]']:
-                el = card.select_one(addr_sel)
-                if el:
-                    address = el.get_text(strip=True)
-                    break
-            if not address:
-                addr_re = re.compile(r'(улица|ул\.|пр\.|бульвар|переулок|площадь|проспект|шоссе|м\.|метро|д\.|дом|корп\.|стр\.)', re.I)
-                for el in card.find_all(['span', 'div', 'p', 'a']):
-                    t = el.get_text(strip=True)
-                    if 10 < len(t) < 200 and addr_re.search(t):
-                        if not re.search(r'(услуги|работаем|предлагаем|компания|салон|магазин)', t, re.I):
-                            address = t
-                            break
-            if not address:
-                m_addr = re.search(
-                    r'([^,]{10,150}(?:улица|ул\.|пр\.|бульвар|переулок|площадь|проспект|шоссе)[^,]{0,80})',
-                    card_text, re.I
-                )
-                if m_addr:
-                    address = m_addr.group(1).strip()[:250]
-
-            info = None
-            desc_exclude = re.compile(r'(улица|ул\.|пр\.|бульвар|переулок|площадь|проспект|шоссе|м\.\s|метро\s|д\.\s|дом\s|корп\.|стр\.)', re.I)
-            for desc_sel in ['[data-testid="description"]', '.description', '[class*="description"]', '[class*="snippet"]', '[class*="Snippet"]']:
-                el = card.select_one(desc_sel)
-                if el:
-                    txt = el.get_text(strip=True)
-                    if 20 < len(txt) < 800 and txt != name and not re.match(r'^\d+[.,]\d+', txt):
-                        if not desc_exclude.search(txt):
-                            info = txt[:500]
-                            break
-            if not info:
-                for el in card.find_all(['span', 'div', 'p']):
-                    t = el.get_text(strip=True)
-                    if 30 < len(t) < 600 and t != name and t != address:
-                        if not re.match(r'^\d+', t) and 'оценок' not in t and not desc_exclude.search(t):
-                            info = t[:500]
-                            break
+            addr_val, info_val = self._extract_address_and_info(card, card_text, name)
 
             companies.append(Company(
                 name=name,
                 phone=phone,
-                address=address,
+                address=addr_val,
+                info=info_val,
                 rating=rating,
                 voters_count=voters_count,
-                info=info,
                 url=full_url
             ))
 

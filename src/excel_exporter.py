@@ -60,10 +60,10 @@ class ExcelExporter:
             self.worksheet.cell(row=row_idx, column=1, value=str(name)[:500])
             self.worksheet.cell(row=row_idx, column=2, value=str(city)[:80])
             self.worksheet.cell(row=row_idx, column=3, value=str(phone)[:100])
-            self.worksheet.cell(row=row_idx, column=4, value=str(address)[:500])
+            self.worksheet.cell(row=row_idx, column=4, value=str(info)[:500])
             self.worksheet.cell(row=row_idx, column=5, value=rating_str)
             self.worksheet.cell(row=row_idx, column=6, value=voters_str)
-            self.worksheet.cell(row=row_idx, column=7, value=str(info)[:1000])
+            self.worksheet.cell(row=row_idx, column=7, value=str(address)[:1000])
             link_cell = self.worksheet.cell(row=row_idx, column=8)
             if url and url.startswith('http'):
                 # Короткий текст вместо длинного URL — гиперссылка работает при клике

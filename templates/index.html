@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2GIS Lead Generator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="app">
+        <header class="header">
+            <div class="header-brand">
+                <img src="{{ url_for('static', filename='img/logo.svg') }}" alt="2GIS" class="logo">
+                <span class="brand-suffix">Lead Generator</span>
+            </div>
+            <p class="header-subtitle">Генерация лидов из публичных данных</p>
+        </header>
+
+        <main class="main">
+            <section class="search-card">
+                <form class="search-form" id="searchForm">
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label for="country">Страна</label>
+                            <select id="country">
+                                <option value="Россия">Россия</option>
+                                <option value="Казахстан">Казахстан</option>
+                                <option value="Узбекистан">Узбекистан</option>
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label for="city">Город</label>
+                            <select id="city" required>
+                                <option value="">Выберите город</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row form-row--category">
+                        <div class="form-field form-field--flex">
+                            <label for="category">Категория</label>
+                            <input type="text" id="category" list="categorySuggestions" placeholder="Введите или выберите категорию (необязательно)">
+                            <datalist id="categorySuggestions">
+                                <option value="Кафе">
+                                <option value="Рестораны">
+                                <option value="Быстрое питание">
+                                <option value="Кофейня">
+                                <option value="Салоны красоты">
+                                <option value="Парикмахерские">
+                                <option value="Супермаркеты">
+                                <option value="Автосервисы">
+                                <option value="Стоматология">
+                                <option value="Аптеки">
+                                <option value="Отели">
+                                <option value="Фитнес-клубы">
+                                <option value="Банки">
+                                <option value="Юридические услуги">
+                                <option value="Такси">
+                                <option value="Доставка">
+                            </datalist>
+                        </div>
+                        <div class="form-field form-field--limit">
+                            <label for="maxResults">Лимит</label>
+                            <input type="number" id="maxResults" placeholder="Все" min="1">
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" id="searchBtn" class="btn btn-primary">Найти компании</button>
+                        <button type="button" id="resetBtn" class="btn btn-outline" style="display: none;">Новый поиск</button>
+                    </div>
+                </form>
+            </section>
+
+            <section class="status-card" id="statusPanel" hidden>
+                <h3 class="status-title">Поиск</h3>
+                <p class="status-message" id="statusMessage">Инициализация...</p>
+                <div class="progress">
+                    <div class="progress-bar" id="progressFill"></div>
+                </div>
+                <span class="progress-label" id="progressText">0 / 0</span>
+            </section>
+
+            <section class="results-card" id="resultsPanel" hidden>
+                <div class="results-header">
+                    <h3>Результаты</h3>
+                    <div class="results-actions">
+                        <span class="results-count" id="resultsCount">0 компаний</span>
+                        <button type="button" id="downloadBtn" class="btn btn-success">Скачать Excel</button>
+                    </div>
+                </div>
+                <div class="table-wrap">
+                    <table class="results-table">
+                        <thead>
+                            <tr>
+                                <th>Название</th>
+                                <th>Город</th>
+                                <th>Телефон</th>
+                                <th>Адрес</th>
+                                <th>Рейтинг</th>
+                                <th>Отзывы</th>
+                            </tr>
+                        </thead>
+                        <tbody id="resultsBody"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="error-card" id="errorPanel" hidden>
+                <p class="error-message" id="errorMessage"></p>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <span>Данные из 2GIS</span>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script>
+        const CITIES_BY_COUNTRY = {{ cities_by_country | tojson | safe }};
+
+        const countrySelect = document.getElementById('country');
+        const citySelect = document.getElementById('city');
+
+        function updateCities() {
+            const country = countrySelect.value;
+            const cities = CITIES_BY_COUNTRY[country] || [];
+            citySelect.innerHTML = '<option value="">Выберите город</option><option value="__WHOLE_COUNTRY__">Вся страна</option>';
+            cities.forEach(city => {
+                const opt = document.createElement('option');
+                opt.value = city;
+                opt.textContent = city;
+                citySelect.appendChild(opt);
+            });
+        }
+
+        countrySelect.addEventListener('change', updateCities);
+        updateCities();
+        window.updateCities = updateCities;
+    </script>
+</body>
+</html>

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2GIS Lead Generator - Запуск</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .container {
+            max-width: 600px;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            text-align: center;
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+            color: #667eea;
+        }
+        
+        .status {
+            font-size: 1.2rem;
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(102, 126, 234, 0.3);
+            border-radius: 50%;
+            border-top-color: #667eea;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .button {
+            display: inline-block;
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 10px;
+            font-weight: 600;
+            margin-top: 20px;
+            transition: transform 0.2s;
+        }
+        
+        .button:hover {
+            transform: translateY(-2px);
+        }
+        
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 2GIS Lead Generator</h1>
+        <div class="status" id="status">
+            <span class="loading"></span>
+            <span id="statusText">Проверка сервера...</span>
+        </div>
+        <div id="content"></div>
+    </div>
+    
+    <script>
+        const statusEl = document.getElementById('status');
+        const statusText = document.getElementById('statusText');
+        const contentEl = document.getElementById('content');
+        
+        // Проверка доступности сервера
+        function checkServer() {
+            fetch('http://localhost:5000/api/status')
+                .then(response => {
+                    if (response.ok) {
+                        // Сервер работает - перенаправляем на главную (форма со страной, городом, категорией)
+                        window.location.replace('http://localhost:5000/?t=' + Date.now());
+                    } else {
+                        throw new Error('Сервер не отвечает');
+                    }
+                })
+                .catch(error => {
+                    statusText.textContent = '⚠️ Сервер не запущен';
+                    contentEl.innerHTML = `
+                        <div class="error">
+                            <p><strong>Сервер не запущен!</strong></p>
+                            <p>Запустите файл <code>🚀 ЗАПУСТИТЬ.bat</code> - он откроет приложение с формой поиска (страна, город, категория).</p>
+                            <p style="margin-top: 15px;">
+                                <a href="#" onclick="location.reload()" class="button">Обновить</a>
+                            </p>
+                        </div>
+                    `;
+                });
+        }
+        
+        // Проверка каждые 2 секунды
+        checkServer();
+        setInterval(checkServer, 2000);
+    </script>
+</body>
+</html>
